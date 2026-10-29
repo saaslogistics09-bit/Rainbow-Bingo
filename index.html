@@ -1,1046 +1,398 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>7x7 Rainbow Bingo - Real-Time Multiplayer</title>
-  <!-- Tailwind CSS CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Phosphor Icons -->
-  <script src="https://unpkg.com/@phosphor-icons/web"></script>
-  <!-- Canvas Confetti -->
-  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAINBOW BINGO (7x7 Multiplayer)</title>
+<!-- Free Public WebSocket MQTT Client -->
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<style>
+  :root {
+    --bg-main: #0b1120;
+    --bg-card: #151f32;
+    --border: #24324d;
+    --text-white: #f8fafc;
+    --text-muted: #94a3b8;
+    --purple: #6366f1;
+    --purple-hover: #4f46e5;
+    --red: #ef4444;
+    --green: #22c55e;
+    --neon: #38bdf8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { background: var(--bg-main); color: var(--text-white); padding: 12px; }
 
-  <style>
-    @keyframes pulseGlow {
-      0%, 100% { box-shadow: 0 0 15px #f43f5e, inset 0 0 10px #f43f5e; transform: scale(1.08); }
-      50% { box-shadow: 0 0 25px #ec4899, inset 0 0 15px #ec4899; transform: scale(1.12); }
-    }
-    .flash-found {
-      animation: pulseGlow 0.8s ease-in-out infinite alternate !important;
-      border-color: #f43f5e !important;
-      z-index: 20;
-    }
-    .custom-scroll::-webkit-scrollbar {
-      width: 5px;
-      height: 5px;
-    }
-    .custom-scroll::-webkit-scrollbar-track {
-      background: #0f172a;
-    }
-    .custom-scroll::-webkit-scrollbar-thumb {
-      background: #334155;
-      border-radius: 4px;
-    }
-    /* Rainbow letter badge shades */
-    .rainbow-r.lit { background-color: #ef4444; border-color: #f87171; box-shadow: 0 0 12px #ef4444; color: #fff; }
-    .rainbow-a.lit { background-color: #f97316; border-color: #fb923c; box-shadow: 0 0 12px #f97316; color: #fff; }
-    .rainbow-i.lit { background-color: #eab308; border-color: #facc15; box-shadow: 0 0 12px #eab308; color: #fff; }
-    .rainbow-n.lit { background-color: #22c55e; border-color: #4ade80; box-shadow: 0 0 12px #22c55e; color: #fff; }
-    .rainbow-b.lit { background-color: #06b6d4; border-color: #22d3ee; box-shadow: 0 0 12px #06b6d4; color: #fff; }
-    .rainbow-o.lit { background-color: #3b82f6; border-color: #60a5fa; box-shadow: 0 0 12px #3b82f6; color: #fff; }
-    .rainbow-w.lit { background-color: #a855f7; border-color: #c084fc; box-shadow: 0 0 12px #a855f7; color: #fff; }
-  </style>
+  /* Top Bar */
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; background: var(--bg-card); padding: 10px 16px; border-radius: 10px; border: 1px solid var(--border); }
+  .logo-box { display: flex; align-items: center; gap: 10px; }
+  .badge-7 { background: #ea580c; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 6px; font-weight: 800; font-size: 18px; }
+  .room-pill { background: #1e293b; padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: bold; color: #38bdf8; }
+  
+  /* Layout */
+  .main-layout { display: grid; grid-template-columns: 280px 1fr 320px; gap: 14px; max-width: 1400px; margin: 0 auto; }
+  @media(max-width: 1050px) { .main-layout { grid-template-columns: 1fr; } }
+
+  .panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+  h3 { font-size: 14px; font-weight: 700; color: #cbd5e1; margin-bottom: 10px; display: flex; justify-content: space-between; }
+
+  /* Lobby Modal */
+  #lobbyModal { position: fixed; inset: 0; background: rgba(11, 17, 32, 0.95); display: flex; align-items: center; justify-content: center; z-index: 999; }
+  .lobby-box { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; width: 340px; text-align: center; }
+  .lobby-box input { width: 100%; padding: 10px; margin: 8px 0 14px; background: #0b1120; border: 1px solid var(--border); border-radius: 6px; color: #fff; font-size: 14px; outline: none; }
+  .btn-primary { width: 100%; padding: 10px; background: var(--purple); border: none; border-radius: 6px; color: #fff; font-weight: bold; cursor: pointer; }
+  .btn-primary:hover { background: var(--purple-hover); }
+
+  /* Rainbow Letters */
+  .rainbow-bar { display: flex; justify-content: center; gap: 6px; margin: 10px 0; }
+  .r-slot { width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; background: #1e293b; border: 2px solid var(--border); border-radius: 8px; font-size: 20px; font-weight: 800; color: #475569; }
+  .r-slot.active { background: #16a34a; border-color: #4ade80; color: #fff; box-shadow: 0 0 12px rgba(34, 197, 94, 0.6); }
+
+  /* 7x7 Grid */
+  .grid-table { margin: 0 auto; border-collapse: separate; border-spacing: 4px; }
+  .grid-table td { width: 50px; height: 50px; background: #0b1120; border: 1px solid var(--border); border-radius: 6px; text-align: center; font-size: 17px; font-weight: bold; cursor: pointer; user-select: none; transition: all 0.15s; }
+  .grid-table td:hover { border-color: #64748b; }
+  .grid-table td.cut { background: #7f1d1d !important; border-color: #ef4444 !important; color: #fca5a5 !important; text-decoration: line-through; }
+  .grid-table td.highlight { animation: neonGlow 1s infinite alternate; }
+  @keyframes neonGlow {
+    from { box-shadow: 0 0 6px #38bdf8; border-color: #38bdf8; transform: scale(1.05); }
+    to { box-shadow: 0 0 18px #0284c7; border-color: #0284c7; transform: scale(1.08); }
+  }
+
+  /* Opponents Cards */
+  .opp-card { background: #0b1120; border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+  .opp-header { display: flex; justify-content: space-between; font-size: 13px; font-weight: bold; margin-bottom: 6px; }
+  .opp-rainbow { display: flex; gap: 4px; }
+  .opp-slot { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; background: #1e293b; border-radius: 4px; font-size: 11px; font-weight: bold; color: #475569; }
+  .opp-slot.active { background: #16a34a; color: #fff; }
+
+  /* Controls & Action Buttons */
+  .btn-row { display: flex; justify-content: center; gap: 8px; margin: 12px 0; }
+  .btn-sm { padding: 7px 14px; border: none; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; }
+  .btn-shuffle { background: #059669; color: #fff; }
+  .btn-clear { background: #334155; color: #fff; }
+  .btn-next { background: var(--purple); color: #fff; }
+
+  /* Activity Log */
+  .log-box { background: #0b1120; border: 1px solid var(--border); border-radius: 6px; padding: 8px; height: 120px; overflow-y: auto; font-size: 12px; color: #94a3b8; }
+  .log-item { margin-bottom: 4px; }
+</style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen font-sans flex flex-col selection:bg-rose-500 selection:text-white">
+<body>
 
-  <!-- Top App Navigation Bar -->
-  <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-40 px-4 py-3 flex items-center justify-between">
-    <div class="flex items-center gap-3">
-      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-500 via-amber-500 to-indigo-500 flex items-center justify-center font-black text-xl shadow-lg shadow-indigo-500/20">
-        7
-      </div>
-      <div>
-        <h1 class="text-lg font-black tracking-tight leading-none bg-gradient-to-r from-white via-indigo-200 to-slate-400 bg-clip-text text-transparent">
-          RAINBOW BINGO
-        </h1>
-        <p class="text-[11px] text-slate-400 font-semibold tracking-wider uppercase">Multiplayer 7×7 &bull; 4 Rounds</p>
+<!-- Join Modal -->
+<div id="lobbyModal">
+  <div class="lobby-box">
+    <h2 style="margin-bottom:6px;">Join Room</h2>
+    <p style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">Realtime Multiplayer 7x7 Rainbow Bingo</p>
+    <label style="font-size:12px; display:block; text-align:left; color:#cbd5e1;">Your Nickname</label>
+    <input type="text" id="joinName" placeholder="e.g. Nick" value="Player">
+    <label style="font-size:12px; display:block; text-align:left; color:#cbd5e1;">Room ID</label>
+    <input type="text" id="joinRoom" placeholder="e.g. 1234" value="1234">
+    <button class="btn-primary" onclick="enterRoom()">Connect to Room</button>
+  </div>
+</div>
+
+<!-- Header -->
+<div class="header">
+  <div class="logo-box">
+    <div class="badge-7">7</div>
+    <div>
+      <div style="font-weight:bold; font-size:15px;">RAINBOW BINGO</div>
+      <div style="font-size:11px; color:var(--text-muted);">MULTIPLAYER 7x7 &bull; LIVE SYNC</div>
+    </div>
+  </div>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <div class="room-pill" id="roomDisplay">Room: ---</div>
+    <div class="room-pill" style="color:#a855f7;" id="roundDisplay">Round 1 / 4</div>
+  </div>
+</div>
+
+<!-- Main Game View -->
+<div class="main-layout">
+
+  <!-- Left Sidebar (Tools) -->
+  <div>
+    <div class="panel" style="margin-bottom:12px;">
+      <h3>NUMBER SPOTTER</h3>
+      <div style="display:flex; gap:6px;">
+        <input type="number" id="spotInput" min="1" max="49" placeholder="1-49" style="width:100%; padding:8px; background:#0b1120; border:1px solid var(--border); border-radius:6px; color:#fff;">
+        <button class="btn-sm" style="background:#0284c7; color:#fff;" onclick="spotNumber()">FIND</button>
       </div>
     </div>
 
-    <!-- Active Room Badge & Controls -->
-    <div id="roomBadgeGroup" class="hidden flex items-center gap-2 sm:gap-4">
-      <div class="bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-1 flex items-center gap-2 text-xs">
-        <span class="text-slate-400">Room:</span>
-        <span id="currentRoomText" class="font-mono font-bold text-indigo-400 uppercase tracking-wider"></span>
-        <button onclick="copyRoomLink()" title="Copy room link" class="hover:text-white transition">
-          <i class="ph ph-copy"></i>
-        </button>
+    <div class="panel">
+      <h3>CALL NUMBER (SYNC)</h3>
+      <div style="display:flex; gap:6px; margin-bottom:8px;">
+        <input type="number" id="callInput" min="1" max="49" placeholder="Call #" style="width:100%; padding:8px; background:#0b1120; border:1px solid var(--border); border-radius:6px; color:#fff;">
+        <button class="btn-sm" style="background:#ea580c; color:#fff;" onclick="broadcastCall()">CALL</button>
       </div>
-
-      <div class="bg-indigo-950/70 border border-indigo-700/60 rounded-lg px-3 py-1 flex items-center gap-1.5 text-xs text-indigo-300">
-        <i class="ph ph-flag-checkered text-sm"></i>
-        <span>Round <b id="currentRoundDisplay" class="text-white">1</b> / 4</span>
-      </div>
-
-      <button onclick="leaveRoom()" class="text-xs text-rose-400 hover:text-rose-300 px-2 py-1 bg-rose-500/10 border border-rose-500/20 rounded-md transition flex items-center gap-1">
-        <i class="ph ph-sign-out"></i> Leave
-      </button>
+      <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">Last Call: <b id="lastCalled" style="color:#38bdf8;">None</b></div>
     </div>
-  </header>
-
-  <!-- Live Shuffle / Activity Notification Banner -->
-  <div id="alertBanner" class="hidden sticky top-14 z-30 w-full bg-amber-500/20 border-b border-amber-500/40 text-amber-200 text-xs px-4 py-2 flex items-center justify-center gap-2 font-medium">
-    <i class="ph ph-warning-circle text-base"></i>
-    <span id="alertBannerText">Player shuffled their board!</span>
   </div>
 
-  <!-- MAIN VIEWPORT -->
-  <main class="flex-1 max-w-7xl mx-auto w-full p-3 sm:p-5 flex flex-col items-center">
+  <!-- Center (Player's Grid) -->
+  <div class="panel" style="text-align:center;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+      <span style="font-size:14px; font-weight:bold;" id="myNameDisplay">Player</span>
+      <span style="font-size:13px; color:#38bdf8;" id="myScoreDisplay">Completed: 0 / 7</span>
+    </div>
 
-    <!-- SCREEN 1: LOBBY & JOIN MODAL -->
-    <section id="lobbyScreen" class="w-full max-w-md my-auto py-8">
-      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
-        <div class="absolute -top-12 -right-12 w-40 h-40 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+    <div class="rainbow-bar">
+      <div class="r-slot" id="r0">R</div>
+      <div class="r-slot" id="r1">A</div>
+      <div class="r-slot" id="r2">I</div>
+      <div class="r-slot" id="r3">N</div>
+      <div class="r-slot" id="r4">B</div>
+      <div class="r-slot" id="r5">O</div>
+      <div class="r-slot" id="r6">W</div>
+    </div>
 
-        <div class="text-center mb-6">
-          <div class="inline-flex items-center gap-1 px-3 py-1 bg-indigo-500/10 text-indigo-400 rounded-full text-xs font-semibold mb-3">
-            <i class="ph ph-sparkle"></i> 7x7 Grid (1 to 49)
-          </div>
-          <h2 class="text-2xl font-black text-white">Join Multiplayer Game</h2>
-          <p class="text-slate-400 text-xs mt-1">Play live across different computers without screen sharing or cheating</p>
-        </div>
+    <div class="btn-row">
+      <button class="btn-sm btn-shuffle" onclick="shuffleGrid()">Shuffle (1-49)</button>
+      <button class="btn-sm btn-clear" onclick="clearCuts()">Clear Cuts</button>
+      <button class="btn-sm btn-next" onclick="nextRound()">Next Round</button>
+    </div>
 
-        <form id="joinForm" onsubmit="handleJoinRoom(event)" class="space-y-4">
-          <div>
-            <label class="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">Your Nickname</label>
-            <div class="relative">
-              <i class="ph ph-user absolute left-3 top-3 text-slate-400 text-base"></i>
-              <input type="text" id="playerNameInput" required maxlength="15" placeholder="e.g., Alex, Rahul, Nick"
-                class="w-full pl-9 pr-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
-            </div>
-          </div>
+    <table class="grid-table" id="myGrid"></table>
+  </div>
 
-          <div>
-            <label class="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">Room ID / Code</label>
-            <div class="relative">
-              <i class="ph ph-hash absolute left-3 top-3 text-slate-400 text-base"></i>
-              <input type="text" id="roomIdInput" required maxlength="12" placeholder="e.g., OFFICE-GAME"
-                class="w-full pl-9 pr-3 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-sm uppercase tracking-wider focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
-            </div>
-          </div>
-
-          <div class="pt-2 flex flex-col gap-2">
-            <button type="submit" id="joinBtn" class="w-full py-3 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 font-bold rounded-xl text-sm transition shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2">
-              <i class="ph ph-plug"></i> Connect to Room
-            </button>
-            <button type="button" onclick="createRandomRoomCode()" class="text-xs text-slate-400 hover:text-indigo-300 py-1 flex items-center justify-center gap-1">
-              <i class="ph ph-dice-three"></i> Generate Random Room Code
-            </button>
-          </div>
-        </form>
-
-        <div class="mt-6 pt-5 border-t border-slate-800 text-[11px] text-slate-400 space-y-1 text-center">
-          <p><span class="text-emerald-400 font-medium">&#10003; 4 Rounds = 1 Match</span> with continuous scoreboard</p>
-          <p><span class="text-emerald-400 font-medium">&#10003; Anti-Cheat:</span> Opponents cannot see your board, only your real-time RAINBOW badges & pending status</p>
-        </div>
+  <!-- Right Sidebar (Live Opponents) -->
+  <div>
+    <div class="panel" style="margin-bottom:12px;">
+      <h3>OPPONENTS' PROGRESS <span style="font-size:11px; color:#38bdf8;">LIVE</span></h3>
+      <div id="opponentsList" style="font-size:13px; color:var(--text-muted); text-align:center; padding:10px 0;">
+        Waiting for other players to join...
       </div>
-    </section>
+    </div>
 
-    <!-- SCREEN 2: ACTIVE GAMEPLAY VIEW -->
-    <section id="gameScreen" class="hidden w-full grid grid-cols-1 lg:grid-cols-12 gap-5">
-
-      <!-- LEFT SIDEBAR: Search Helper, Turn / Call Manager & Pending Numbers -->
-      <aside class="lg:col-span-3 flex flex-col gap-4 order-2 lg:order-1">
-
-        <!-- Quick Number Spotter / Search Utility -->
-        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg">
-          <div class="flex items-center justify-between mb-2">
-            <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-              <i class="ph ph-magnifying-glass text-indigo-400"></i> Number Spotter
-            </h3>
-            <span class="text-[10px] text-slate-400">Instant Neon Glow</span>
-          </div>
-          <p class="text-[11px] text-slate-400 mb-3">Hard to find a number? Type it here to instantly flash its exact box on your 7×7 grid:</p>
-          
-          <div class="flex gap-2">
-            <input type="number" id="spotNumberInput" min="1" max="49" placeholder="1-49"
-              class="w-full bg-slate-950 border border-slate-700 text-center text-lg font-black rounded-xl py-1.5 focus:border-rose-500 focus:outline-none"
-              onkeydown="if(event.key==='Enter') findAndHighlightNumber()">
-            <button onclick="findAndHighlightNumber()" class="bg-rose-600 hover:bg-rose-500 px-4 py-1.5 rounded-xl font-bold text-xs uppercase transition tracking-wider flex items-center gap-1">
-              <i class="ph ph-target"></i> Find
-            </button>
-          </div>
-        </div>
-
-        <!-- Global Number Announcer / Room Call Tracker -->
-        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg">
-          <div class="flex items-center justify-between mb-2">
-            <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-              <i class="ph ph-megaphone-simple text-amber-400"></i> Call Number (Sync)
-            </h3>
-            <span class="text-[10px] text-amber-400 font-mono" id="lastCalledBadge">None yet</span>
-          </div>
-          <p class="text-[11px] text-slate-400 mb-3">When someone speaks a number out loud, submit it here so all players see the shared call log:</p>
-
-          <div class="flex gap-2 mb-3">
-            <input type="number" id="callNumberInput" min="1" max="49" placeholder="Number"
-              class="w-full bg-slate-950 border border-slate-700 text-center text-lg font-black rounded-xl py-1.5 focus:border-amber-500 focus:outline-none"
-              onkeydown="if(event.key==='Enter') broadcastCallNumber()">
-            <button onclick="broadcastCallNumber()" class="bg-amber-600 hover:bg-amber-500 px-4 py-1.5 rounded-xl font-bold text-xs uppercase transition tracking-wider flex items-center gap-1 text-slate-950">
-              <i class="ph ph-broadcast"></i> Call
-            </button>
-          </div>
-
-          <!-- Recently Called List -->
-          <div>
-            <div class="text-[11px] text-slate-400 font-semibold mb-1.5 flex justify-between">
-              <span>Called History</span>
-              <span id="calledCountText" class="text-indigo-400">0 called</span>
-            </div>
-            <div id="calledNumbersList" class="flex flex-wrap gap-1 max-h-24 overflow-y-auto custom-scroll p-1 bg-slate-950/70 border border-slate-800 rounded-lg min-h-[38px]">
-              <span class="text-[10px] text-slate-500 italic p-1">No numbers called yet</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Pending Numbers (1 to 49) Checker -->
-        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg flex-1">
-          <div class="flex items-center justify-between mb-2">
-            <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-              <i class="ph ph-check-square-offset text-emerald-400"></i> Unmarked Numbers
-            </h3>
-            <span id="pendingCountBadge" class="text-[10px] bg-slate-800 text-emerald-400 px-2 py-0.5 rounded-full font-bold">49 Left</span>
-          </div>
-          <p class="text-[11px] text-slate-400 mb-2">Click any number below to spot it on your grid & strike it:</p>
-
-          <div id="pendingNumberGrid" class="grid grid-cols-7 gap-1 max-h-48 overflow-y-auto custom-scroll p-1 bg-slate-950/60 rounded-lg border border-slate-800">
-            <!-- 1 to 49 numbers dynamically populated -->
-          </div>
-        </div>
-
-      </aside>
-
-      <!-- CENTER: MY 7x7 BOARD & CONTROLS -->
-      <section class="lg:col-span-6 flex flex-col items-center order-1 lg:order-2">
-
-        <!-- My Personal RAINBOW Status Display -->
-        <div class="w-full bg-slate-900 border border-slate-800 rounded-2xl p-3 sm:p-4 mb-4 shadow-xl flex flex-col items-center">
-          <div class="w-full flex items-center justify-between mb-2 text-xs">
-            <span class="text-slate-400 font-medium">Player: <b id="myPlayerNameText" class="text-white">You</b></span>
-            <span class="text-slate-400 font-semibold">Completed: <b id="myLinesCountText" class="text-emerald-400 text-sm">0</b> / 7 lines</span>
-          </div>
-
-          <!-- Letters R-A-I-N-B-O-W with individual glow -->
-          <div class="flex items-center justify-center gap-1.5 sm:gap-2.5 my-1">
-            <div id="myLet-0" class="rainbow-r w-10 h-10 sm:w-12 sm:h-12 rounded-xl border-2 border-slate-700 bg-slate-950 flex items-center justify-center font-black text-xl sm:text-2xl text-slate-500 transition-all duration-300">R</div>
-            <div id="myLet-1" class="rainbow-a w-10 h-10 sm:w-12 sm:h-12 rounded-xl border-2 border-slate-700 bg-slate-950 flex items-center justify-center font-black text-xl sm:text-2xl text-slate-500 transition-all duration-300">A</div>
-            <div id="myLet-2" class="rainbow-i w-10 h-10 sm:w-12 sm:h-12 rounded-xl border-2 border-slate-700 bg-slate-950 flex items-center justify-center font-black text-xl sm:text-2xl text-slate-500 transition-all duration-300">I</div>
-            <div id="myLet-3" class="rainbow-n w-10 h-10 sm:w-12 sm:h-12 rounded-xl border-2 border-slate-700 bg-slate-950 flex items-center justify-center font-black text-xl sm:text-2xl text-slate-500 transition-all duration-300">N</div>
-            <div id="myLet-4" class="rainbow-b w-10 h-10 sm:w-12 sm:h-12 rounded-xl border-2 border-slate-700 bg-slate-950 flex items-center justify-center font-black text-xl sm:text-2xl text-slate-500 transition-all duration-300">B</div>
-            <div id="myLet-5" class="rainbow-o w-10 h-10 sm:w-12 sm:h-12 rounded-xl border-2 border-slate-700 bg-slate-950 flex items-center justify-center font-black text-xl sm:text-2xl text-slate-500 transition-all duration-300">O</div>
-            <div id="myLet-6" class="rainbow-w w-10 h-10 sm:w-12 sm:h-12 rounded-xl border-2 border-slate-700 bg-slate-950 flex items-center justify-center font-black text-xl sm:text-2xl text-slate-500 transition-all duration-300">W</div>
-          </div>
-        </div>
-
-        <!-- Action Buttons (Shuffle Broadcasts to everyone) -->
-        <div class="flex flex-wrap items-center justify-center gap-2 mb-3 w-full">
-          <button onclick="handleShuffleGrid()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-bold rounded-xl transition shadow flex items-center gap-1.5">
-            <i class="ph ph-shuffle"></i> Shuffle (1-49)
-          </button>
-          <button onclick="clearMyCutsOnly()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 transition flex items-center gap-1.5">
-            <i class="ph ph-eraser"></i> Clear My Cuts
-          </button>
-          <button onclick="requestNextRound()" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5">
-            <i class="ph ph-arrow-right"></i> Next Round
-          </button>
-        </div>
-
-        <!-- THE 7x7 GRID -->
-        <div class="bg-slate-900 border-2 border-slate-800 p-2 sm:p-3 rounded-2xl shadow-2xl relative">
-          <div id="grid7x7" class="grid grid-cols-7 gap-1.5 sm:gap-2 select-none">
-            <!-- 49 cells generated here -->
-          </div>
-        </div>
-
-        <div class="text-xs text-slate-400 mt-3 text-center">
-          <p>Click any cell to <span class="text-rose-400 font-bold">Cut / Strike</span>. Complete 7 straight rows, columns, or diagonals to finish RAINBOW!</p>
-        </div>
-      </section>
-
-      <!-- RIGHT SIDEBAR: Opponents Progress & Match Scoreboard -->
-      <aside class="lg:col-span-3 flex flex-col gap-4 order-3">
-
-        <!-- Live Opponents RAINBOW Progress -->
-        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg">
-          <div class="flex items-center justify-between mb-3">
-            <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-              <i class="ph ph-users text-cyan-400"></i> Opponents' Progress
-            </h3>
-            <span class="text-[10px] bg-slate-800 text-cyan-300 px-2 py-0.5 rounded-full font-bold">Anti-Cheat</span>
-          </div>
-          <p class="text-[11px] text-slate-400 mb-3">You can see their live RAINBOW completion without seeing their private numbers:</p>
-
-          <div id="opponentsList" class="space-y-3 max-h-72 overflow-y-auto custom-scroll pr-1">
-            <div class="text-xs text-slate-500 italic text-center py-4">Waiting for other players to join this room...</div>
-          </div>
-        </div>
-
-        <!-- 4-Round Match Standings & Scoreboard -->
-        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg flex-1">
-          <div class="flex items-center justify-between mb-2">
-            <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-              <i class="ph ph-trophy text-amber-400"></i> Match Scoreboard
-            </h3>
-            <span class="text-[10px] text-amber-400 font-bold">4 Rounds Match</span>
-          </div>
-
-          <div class="grid grid-cols-4 gap-1 text-[11px] font-bold text-center mb-3">
-            <div class="bg-slate-950 p-1.5 rounded-lg border border-slate-800" id="roundTab-1">R1</div>
-            <div class="bg-slate-950 p-1.5 rounded-lg border border-slate-800" id="roundTab-2">R2</div>
-            <div class="bg-slate-950 p-1.5 rounded-lg border border-slate-800" id="roundTab-3">R3</div>
-            <div class="bg-slate-950 p-1.5 rounded-lg border border-slate-800" id="roundTab-4">R4</div>
-          </div>
-
-          <div class="overflow-x-auto">
-            <table class="w-full text-left text-xs">
-              <thead>
-                <tr class="text-slate-400 border-b border-slate-800 text-[10px] uppercase">
-                  <th class="pb-1.5">Player</th>
-                  <th class="pb-1.5 text-center">Wins</th>
-                  <th class="pb-1.5 text-right">Pending</th>
-                </tr>
-              </thead>
-              <tbody id="matchScoreTable" class="divide-y divide-slate-800/60 font-medium">
-                <tr>
-                  <td colspan="3" class="py-2 text-center text-slate-500 text-[11px]">No round scores yet</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Room Audit / Activity Log -->
-          <div class="mt-4 pt-3 border-t border-slate-800">
-            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Room Activity Log</span>
-            <div id="activityLog" class="text-[11px] text-slate-400 max-h-24 overflow-y-auto custom-scroll space-y-1 bg-slate-950/60 p-2 rounded-lg border border-slate-800/80">
-              <div class="text-slate-500 text-[10px]">Room initialized.</div>
-            </div>
-          </div>
-        </div>
-
-      </aside>
-
-    </section>
-
-  </main>
-
-  <!-- Winner Modal (Round or Match Winner) -->
-  <div id="winnerModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-slate-900 border-2 border-indigo-500/50 rounded-3xl p-6 sm:p-8 max-w-sm w-full text-center shadow-2xl relative overflow-hidden">
-      <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-400 to-rose-500 flex items-center justify-center text-3xl mx-auto mb-4 shadow-lg shadow-amber-500/20">
-        🏆
-      </div>
-      <h3 id="modalTitle" class="text-2xl font-black text-white">RAINBOW BINGO!</h3>
-      <p id="modalSubtitle" class="text-slate-300 text-sm mt-1">Player completed all 7 letters</p>
-
-      <div id="modalScores" class="my-5 p-3 bg-slate-950 rounded-xl border border-slate-800 text-xs text-left space-y-1">
-        <!-- populated dynamically -->
-      </div>
-
-      <div class="flex gap-2">
-        <button onclick="closeWinnerModal()" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 font-bold text-sm rounded-xl transition">
-          Continue Playing
-        </button>
+    <div class="panel">
+      <h3>ROOM ACTIVITY LOG</h3>
+      <div class="log-box" id="logBox">
+        <div class="log-item">Connecting to room...</div>
       </div>
     </div>
   </div>
 
-  <!-- Audio Effects using Web Audio API (No external sound files required) -->
-  <script>
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    function playBeep(freq = 520, type = 'sine', duration = 0.1) {
-      if (audioCtx.state === 'suspended') audioCtx.resume();
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = type;
-      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-      gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start();
-      osc.stop(audioCtx.currentTime + duration);
+</div>
+
+<script>
+  let myId = "user_" + Math.random().toString(36).substr(2, 6);
+  let myName = "Player";
+  let roomId = "1234";
+  let currentRound = 1;
+  let client = null;
+  let opponents = {};
+
+  // Setup Grid
+  const gridEl = document.getElementById("myGrid");
+  for (let r = 0; r < 7; r++) {
+    const tr = document.createElement("tr");
+    for (let c = 0; c < 7; c++) {
+      const td = document.createElement("td");
+      td.id = `cell_${r}_${c}`;
+      td.onclick = () => { td.classList.toggle("cut"); evaluateBoard(); syncMyProgress(); };
+      tr.appendChild(td);
     }
+    gridEl.appendChild(tr);
+  }
 
-    function playSuccessChime() {
-      [523, 659, 783, 1046].forEach((f, idx) => {
-        setTimeout(() => playBeep(f, 'triangle', 0.18), idx * 100);
-      });
-    }
+  function enterRoom() {
+    myName = document.getElementById("joinName").value.trim() || "Player";
+    roomId = document.getElementById("joinRoom").value.trim() || "1234";
+    document.getElementById("lobbyModal").style.display = "none";
+    document.getElementById("roomDisplay").innerText = `Room: ${roomId}`;
+    document.getElementById("myNameDisplay").innerText = myName;
 
-    function playShuffleSound() {
-      playBeep(220, 'sawtooth', 0.15);
-      setTimeout(() => playBeep(330, 'sawtooth', 0.15), 80);
-    }
-  </script>
+    shuffleGrid();
+    connectMQTT();
+  }
 
-  <!-- FIREBASE SCRIPTS & GAME ENGINE -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getDatabase, ref, set, get, update, onValue, push, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
-
-    // Standard public Firebase instance configuration for multiplayer demo rooms
-    const firebaseConfig = {
-      databaseURL: "https://rainbow-bingo-multiplayer-default-rtdb.firebaseio.com"
-    };
-
-    let app, db;
-    try {
-      app = initializeApp(firebaseConfig);
-      db = getDatabase(app);
-    } catch (e) {
-      console.warn("Using fallback local emulator config for Firebase", e);
-    }
-
-    // STATE
-    const GRID_SIZE = 7;
-    const TOTAL_NUMS = 49;
-    const RAINBOW_LETTERS = ['R', 'A', 'I', 'N', 'B', 'O', 'W'];
-
-    let myPlayerId = 'p_' + Math.random().toString(36).substring(2, 9);
-    let myPlayerName = '';
-    let currentRoomId = '';
-    let currentRound = 1;
-
-    let myGrid = []; // 7x7 array of numbers
-    let myMarks = []; // 7x7 boolean array
-
-    let roomListenerUnsub = null;
-    let fallbackPeerSyncInterval = null;
-
-    // Window exposure
-    window.handleJoinRoom = handleJoinRoom;
-    window.createRandomRoomCode = createRandomRoomCode;
-    window.copyRoomLink = copyRoomLink;
-    window.leaveRoom = leaveRoom;
-    window.handleShuffleGrid = handleShuffleGrid;
-    window.clearMyCutsOnly = clearMyCutsOnly;
-    window.findAndHighlightNumber = findAndHighlightNumber;
-    window.broadcastCallNumber = broadcastCallNumber;
-    window.requestNextRound = requestNextRound;
-    window.closeWinnerModal = () => document.getElementById('winnerModal').classList.add('hidden');
-
-    // On Load: Check URL parameters for direct room joining
-    window.addEventListener('DOMContentLoaded', () => {
-      const urlParams = new URLSearchParams(window.location.search);
-      const roomParam = urlParams.get('room');
-      if (roomParam) {
-        document.getElementById('roomIdInput').value = roomParam.toUpperCase();
-      }
-      buildPendingKeypad();
+  // Connect to EMQX Public Secure WebSocket Broker
+  function connectMQTT() {
+    logActivity(`Connecting to broker for Room ${roomId}...`);
+    client = mqtt.connect("wss://broker.emqx.io:8084/mqtt", {
+      clientId: myId,
+      clean: true,
+      connectTimeout: 4000
     });
 
-    function createRandomRoomCode() {
-      const adjectives = ['LUCKY', 'SUPER', 'MAGIC', 'TURBO', 'DELTA'];
-      const randAdj = adjectives[Math.floor(Math.random() * adjectives.length)];
-      const randNum = Math.floor(100 + Math.random() * 900);
-      document.getElementById('roomIdInput').value = `${randAdj}${randNum}`;
-    }
+    const topic = `rainbow_bingo_v2/${roomId}`;
 
-    function copyRoomLink() {
-      const url = new URL(window.location.href);
-      url.searchParams.set('room', currentRoomId);
-      const textToCopy = url.toString();
-      
-      const tempInput = document.createElement("input");
-      tempInput.value = textToCopy;
-      document.body.appendChild(tempInput);
-      tempInput.select();
-      document.execCommand("copy");
-      document.body.removeChild(tempInput);
+    client.on("connect", () => {
+      logActivity(`Connected! Subscribed to room.`);
+      client.subscribe(topic);
+      // Announce Presence
+      broadcast({ type: "join", id: myId, name: myName, lines: 0 });
+    });
 
-      showBanner(`Invite link copied to clipboard! Share it with friends.`);
-    }
-
-    // Room join logic
-    async function handleJoinRoom(e) {
-      if (e) e.preventDefault();
-      const pName = document.getElementById('playerNameInput').value.trim();
-      const rId = document.getElementById('roomIdInput').value.trim().toUpperCase();
-
-      if (!pName || !rId) return;
-
-      myPlayerName = pName;
-      currentRoomId = rId;
-
-      document.getElementById('currentRoomText').innerText = currentRoomId;
-      document.getElementById('myPlayerNameText').innerText = myPlayerName;
-      document.getElementById('lobbyScreen').classList.add('hidden');
-      document.getElementById('gameScreen').classList.remove('hidden');
-      document.getElementById('roomBadgeGroup').classList.remove('hidden');
-
-      // Initialize personal grid
-      initializeMyGrid();
-      
-      // Connect to Firebase room listener
-      startRoomSync();
-    }
-
-    function initializeMyGrid() {
-      // 1 to 49
-      const numbers = Array.from({ length: TOTAL_NUMS }, (_, i) => i + 1);
-      
-      // Fisher-Yates shuffle
-      for (let i = numbers.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [numbers[i], numbers[j]] = [numbers[j], numbers[i]];
-      }
-
-      myGrid = [];
-      myMarks = [];
-      let idx = 0;
-      for (let r = 0; r < GRID_SIZE; r++) {
-        myGrid[r] = [];
-        myMarks[r] = [];
-        for (let c = 0; c < GRID_SIZE; c++) {
-          myGrid[r][c] = numbers[idx++];
-          myMarks[r][c] = false;
-        }
-      }
-
-      renderMyBoard();
-      updateMyScoreAndBroadcast(false);
-    }
-
-    function renderMyBoard() {
-      const container = document.getElementById('grid7x7');
-      container.innerHTML = '';
-
-      for (let r = 0; r < GRID_SIZE; r++) {
-        for (let c = 0; c < GRID_SIZE; c++) {
-          const val = myGrid[r][c];
-          const isMarked = myMarks[r][c];
-
-          const cell = document.createElement('div');
-          cell.id = `cell-${val}`;
-          cell.dataset.row = r;
-          cell.dataset.col = c;
-          cell.dataset.val = val;
-
-          cell.className = `w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center font-black text-sm sm:text-base border transition-all cursor-pointer select-none ${
-            isMarked
-              ? 'bg-rose-950/90 border-rose-500 text-rose-300 line-through scale-95 shadow-inner'
-              : 'bg-slate-950 hover:bg-slate-800 border-slate-700/80 text-white hover:border-slate-500'
-          }`;
-
-          cell.innerText = val;
-          cell.onclick = () => toggleCellMark(r, c, val);
-
-          container.appendChild(cell);
-        }
-      }
-
-      refreshPendingKeypad();
-    }
-
-    function toggleCellMark(r, c, val) {
-      myMarks[r][c] = !myMarks[r][c];
-      playBeep(myMarks[r][c] ? 600 : 350, 'sine', 0.08);
-
-      const cell = document.getElementById(`cell-${val}`);
-      if (cell) {
-        if (myMarks[r][c]) {
-          cell.className = cell.className
-            .replace('bg-slate-950 hover:bg-slate-800 border-slate-700/80 text-white', 'bg-rose-950/90 border-rose-500 text-rose-300 line-through scale-95 shadow-inner');
-        } else {
-          cell.className = cell.className
-            .replace('bg-rose-950/90 border-rose-500 text-rose-300 line-through scale-95 shadow-inner', 'bg-slate-950 hover:bg-slate-800 border-slate-700/80 text-white');
-        }
-      }
-
-      updateMyScoreAndBroadcast(false);
-      refreshPendingKeypad();
-    }
-
-    function calculateMyCompletedLines() {
-      let lines = 0;
-
-      // 1. Rows
-      for (let r = 0; r < GRID_SIZE; r++) {
-        let full = true;
-        for (let c = 0; c < GRID_SIZE; c++) {
-          if (!myMarks[r][c]) { full = false; break; }
-        }
-        if (full) lines++;
-      }
-
-      // 2. Columns
-      for (let c = 0; c < GRID_SIZE; c++) {
-        let full = true;
-        for (let r = 0; r < GRID_SIZE; r++) {
-          if (!myMarks[r][c]) { full = false; break; }
-        }
-        if (full) lines++;
-      }
-
-      // 3. Main Diagonal (\)
-      let d1 = true;
-      for (let i = 0; i < GRID_SIZE; i++) {
-        if (!myMarks[i][i]) { d1 = false; break; }
-      }
-      if (d1) lines++;
-
-      // 4. Anti-Diagonal (/)
-      let d2 = true;
-      for (let i = 0; i < GRID_SIZE; i++) {
-        if (!myMarks[i][GRID_SIZE - 1 - i]) { d2 = false; break; }
-      }
-      if (d2) lines++;
-
-      return Math.min(lines, 7);
-    }
-
-    function countPendingNumbers() {
-      let unmarked = 0;
-      for (let r = 0; r < GRID_SIZE; r++) {
-        for (let c = 0; c < GRID_SIZE; c++) {
-          if (!myMarks[r][c]) unmarked++;
-        }
-      }
-      return unmarked;
-    }
-
-    function updateMyScoreAndBroadcast(isShuffle = false) {
-      const completedLines = calculateMyCompletedLines();
-      const pendingCount = countPendingNumbers();
-
-      document.getElementById('myLinesCountText').innerText = completedLines;
-      document.getElementById('pendingCountBadge').innerText = `${pendingCount} Left`;
-
-      // Update local R-A-I-N-B-O-W badges
-      for (let i = 0; i < 7; i++) {
-        const letEl = document.getElementById(`myLet-${i}`);
-        if (completedLines > i) {
-          if (!letEl.classList.contains('lit')) {
-            playSuccessChime();
-          }
-          letEl.classList.add('lit');
-        } else {
-          letEl.classList.remove('lit');
-        }
-      }
-
-      // Win check
-      if (completedLines >= 7) {
-        triggerRainbowWin(myPlayerName);
-      }
-
-      // Broadcast to Firebase Realtime Database
-      syncPlayerStateToRoom(completedLines, pendingCount, isShuffle);
-    }
-
-    function handleShuffleGrid() {
-      playShuffleSound();
-      initializeMyGrid();
-      updateMyScoreAndBroadcast(true); // Broadcast shuffle action
-      showBanner(`You shuffled your grid! Opponents have been notified.`);
-    }
-
-    function clearMyCutsOnly() {
-      for (let r = 0; r < GRID_SIZE; r++) {
-        for (let c = 0; c < GRID_SIZE; c++) {
-          myMarks[r][c] = false;
-        }
-      }
-      renderMyBoard();
-      updateMyScoreAndBroadcast(false);
-      showBanner(`Your cuts have been reset.`);
-    }
-
-    // Number spotter search with neon locator glow
-    function findAndHighlightNumber(num) {
-      const input = document.getElementById('spotNumberInput');
-      const targetVal = parseInt(num || input.value, 10);
-      if (!targetVal || targetVal < 1 || targetVal > 49) return;
-
-      const cell = document.getElementById(`cell-${targetVal}`);
-      if (cell) {
-        // Remove previous highlights
-        document.querySelectorAll('.flash-found').forEach(el => el.classList.remove('flash-found'));
-
-        cell.classList.add('flash-found');
-        cell.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        playBeep(880, 'triangle', 0.25);
-
-        setTimeout(() => {
-          cell.classList.remove('flash-found');
-        }, 3500);
-
-        showBanner(`Found ${targetVal} on your grid! Box is flashing.`);
-      } else {
-        showBanner(`Number ${targetVal} not found on your grid.`);
-      }
-      if (!num) input.value = '';
-    }
-
-    // 1 to 49 Keypad for Unmarked Numbers
-    function buildPendingKeypad() {
-      const container = document.getElementById('pendingNumberGrid');
-      if (!container) return;
-      container.innerHTML = '';
-
-      for (let i = 1; i <= TOTAL_NUMS; i++) {
-        const btn = document.createElement('button');
-        btn.id = `pending-key-${i}`;
-        btn.innerText = i;
-        btn.className = "text-xs py-1 rounded bg-slate-900 hover:bg-indigo-600 text-slate-300 hover:text-white font-mono font-bold transition border border-slate-800";
-        btn.onclick = () => {
-          findAndHighlightNumber(i);
-        };
-        container.appendChild(btn);
-      }
-    }
-
-    function refreshPendingKeypad() {
-      for (let i = 1; i <= TOTAL_NUMS; i++) {
-        const btn = document.getElementById(`pending-key-${i}`);
-        if (!btn) continue;
-        
-        let isMarked = false;
-        for (let r = 0; r < GRID_SIZE; r++) {
-          for (let c = 0; c < GRID_SIZE; c++) {
-            if (myGrid[r] && myGrid[r][c] === i && myMarks[r][c]) {
-              isMarked = true;
-              break;
-            }
-          }
-        }
-
-        if (isMarked) {
-          btn.className = "text-xs py-1 rounded bg-rose-950/70 border border-rose-900 text-rose-500 line-through cursor-default pointer-events-none opacity-50";
-        } else {
-          btn.className = "text-xs py-1 rounded bg-slate-900 hover:bg-indigo-600 text-slate-300 hover:text-white font-mono font-bold transition border border-slate-800";
-        }
-      }
-    }
-
-    // Broadcast number called by a player
-    async function broadcastCallNumber() {
-      const input = document.getElementById('callNumberInput');
-      const val = parseInt(input.value, 10);
-      if (!val || val < 1 || val > 49) return;
-
-      input.value = '';
-
-      if (db) {
-        try {
-          const roomRef = ref(db, `rainbow_rooms/${currentRoomId}/calls`);
-          await push(roomRef, {
-            number: val,
-            calledBy: myPlayerName,
-            timestamp: Date.now()
-          });
-        } catch (e) {
-          console.warn("Firebase offline call fallback", e);
-        }
-      }
-
-      // Automatically spot it on our own board for convenience
-      findAndHighlightNumber(val);
-    }
-
-    // Advance to next round (Up to 4 rounds per match)
-    async function requestNextRound() {
-      if (currentRound >= 4) {
-        showBanner("Round 4 is the final round of the match!");
-        return;
-      }
-
-      const nextR = currentRound + 1;
-      if (db) {
-        try {
-          const roundRef = ref(db, `rainbow_rooms/${currentRoomId}/meta`);
-          await update(roundRef, {
-            currentRound: nextR,
-            lastRoundChangeBy: myPlayerName,
-            roundTimestamp: Date.now()
-          });
-
-          // Log activity
-          const actRef = ref(db, `rainbow_rooms/${currentRoomId}/activity`);
-          await push(actRef, {
-            text: `${myPlayerName} advanced the match to Round ${nextR}!`,
-            time: Date.now()
-          });
-        } catch (e) {
-          console.warn("Direct local round shift", e);
-          onRoundAdvanced(nextR);
-        }
-      } else {
-        onRoundAdvanced(nextR);
-      }
-    }
-
-    function onRoundAdvanced(roundNum) {
-      currentRound = roundNum;
-      document.getElementById('currentRoundDisplay').innerText = currentRound;
-      
-      // Update round tabs
-      for (let i = 1; i <= 4; i++) {
-        const tab = document.getElementById(`roundTab-${i}`);
-        if (i === currentRound) {
-          tab.className = "bg-indigo-600 text-white p-1.5 rounded-lg border border-indigo-400 font-bold";
-        } else if (i < currentRound) {
-          tab.className = "bg-emerald-950 text-emerald-300 p-1.5 rounded-lg border border-emerald-800 font-medium";
-        } else {
-          tab.className = "bg-slate-950 text-slate-500 p-1.5 rounded-lg border border-slate-800 font-medium";
-        }
-      }
-
-      // Auto-shuffle for clean round slate
-      initializeMyGrid();
-      showBanner(`Welcome to Round ${currentRound}! Boards have been refreshed.`);
-    }
-
-    // Firebase Realtime DB Synchronization Engine
-    function startRoomSync() {
-      if (!db) {
-        console.warn("Firebase DB not available, running single player mode.");
-        return;
-      }
-
-      // Set initial player presence & round meta
-      const myRef = ref(db, `rainbow_rooms/${currentRoomId}/players/${myPlayerId}`);
-      set(myRef, {
-        id: myPlayerId,
-        name: myPlayerName,
-        score: 0,
-        pending: 49,
-        lastShuffle: null,
-        updatedAt: Date.now()
-      });
-
-      // Listen to room changes
-      const roomRef = ref(db, `rainbow_rooms/${currentRoomId}`);
-      onValue(roomRef, (snapshot) => {
-        const data = snapshot.val();
-        if (!data) return;
-
-        // 1. Sync round
-        if (data.meta && data.meta.currentRound && data.meta.currentRound !== currentRound) {
-          onRoundAdvanced(data.meta.currentRound);
-        }
-
-        // 2. Sync opponents' progress
-        if (data.players) {
-          renderOpponents(data.players);
-          renderScoreboard(data.players);
-        }
-
-        // 3. Sync recent calls
-        if (data.calls) {
-          renderCallsHistory(data.calls);
-        }
-
-        // 4. Activity alerts (like Shuffles)
-        if (data.activity) {
-          renderActivities(data.activity);
-        }
-      });
-    }
-
-    async function syncPlayerStateToRoom(score, pending, isShuffle) {
-      if (!db || !currentRoomId) return;
+    client.on("message", (t, msg) => {
       try {
-        const myRef = ref(db, `rainbow_rooms/${currentRoomId}/players/${myPlayerId}`);
-        const payload = {
-          name: myPlayerName,
-          score: score,
-          pending: pending,
-          updatedAt: Date.now()
-        };
-        if (isShuffle) {
-          payload.lastShuffle = Date.now();
-        }
-        await update(myRef, payload);
+        const data = JSON.parse(msg.toString());
+        if (data.id === myId) return; // ignore own echo
 
-        if (isShuffle) {
-          const actRef = ref(db, `rainbow_rooms/${currentRoomId}/activity`);
-          await push(actRef, {
-            text: `⚠️ ${myPlayerName} just shuffled their grid!`,
-            type: 'shuffle',
-            author: myPlayerName,
-            time: Date.now()
-          });
-        }
-      } catch (err) {
-        console.error("Sync error", err);
+        handleIncomingData(data);
+      } catch(e) { console.error(e); }
+    });
+
+    // Heartbeat every 4 seconds to keep players visible
+    setInterval(() => {
+      if (client && client.connected) {
+        broadcast({ type: "heartbeat", id: myId, name: myName, lines: getMyCompletedLines() });
       }
+    }, 4000);
+  }
+
+  function broadcast(obj) {
+    if (client && client.connected) {
+      client.publish(`rainbow_bingo_v2/${roomId}`, JSON.stringify(obj));
     }
+  }
 
-    function renderOpponents(players) {
-      const container = document.getElementById('opponentsList');
-      container.innerHTML = '';
+  function handleIncomingData(data) {
+    if (data.type === "join") {
+      logActivity(`${data.name} entered the room!`);
+      opponents[data.id] = { name: data.name, lines: data.lines, lastSeen: Date.now() };
+      // Reply with our presence so they see us too
+      broadcast({ type: "heartbeat", id: myId, name: myName, lines: getMyCompletedLines() });
+      renderOpponents();
+    } else if (data.type === "heartbeat" || data.type === "update") {
+      opponents[data.id] = { name: data.name, lines: data.lines, lastSeen: Date.now() };
+      renderOpponents();
+    } else if (data.type === "shuffle") {
+      logActivity(`⚠️ ${data.name} shuffled their board!`);
+    } else if (data.type === "call") {
+      document.getElementById("lastCalled").innerText = data.num;
+      logActivity(`📢 ${data.name} called number ${data.num}!`);
+    }
+  }
 
-      const otherPlayers = Object.values(players).filter(p => p.id !== myPlayerId);
+  function renderOpponents() {
+    const list = document.getElementById("opponentsList");
+    const now = Date.now();
+    let html = "";
+    const letters = ["R","A","I","N","B","O","W"];
 
-      if (otherPlayers.length === 0) {
-        container.innerHTML = `<div class="text-xs text-slate-500 italic text-center py-4">You are currently the only player in this room.<br>Share room ID <b>${currentRoomId}</b> with your friends!</div>`;
-        return;
-      }
-
-      otherPlayers.forEach(p => {
-        const card = document.createElement('div');
-        card.className = "bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col gap-2";
-
-        // Generate Opponent's RAINBOW miniature badges
-        let rainbowBadgesHtml = '';
-        RAINBOW_LETTERS.forEach((letter, idx) => {
-          const isLit = (p.score || 0) > idx;
-          const letterClass = `rainbow-${letter.toLowerCase()}`;
-          rainbowBadgesHtml += `
-            <div class="${letterClass} ${isLit ? 'lit' : ''} w-6 h-6 rounded flex items-center justify-center font-black text-xs border border-slate-700 bg-slate-900 text-slate-500 transition-all">
-              ${letter}
-            </div>
-          `;
-        });
-
-        card.innerHTML = `
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span class="font-bold text-xs text-white">${escapeHtml(p.name)}</span>
-            </div>
-            <div class="text-[11px] font-semibold text-slate-400">
-              <span class="text-emerald-400 font-bold">${p.score || 0}</span>/7 lines &bull; <span class="text-indigo-300">${p.pending ?? '?'} left</span>
-            </div>
+    for (let id in opponents) {
+      if (now - opponents[id].lastSeen > 12000) continue; // offline check
+      const opp = opponents[id];
+      html += `
+        <div class="opp-card">
+          <div class="opp-header">
+            <span>${opp.name}</span>
+            <span style="color:#38bdf8;">${opp.lines} / 7</span>
           </div>
-          <div class="flex items-center gap-1.5 justify-center py-1">
-            ${rainbowBadgesHtml}
+          <div class="opp-rainbow">
+            ${letters.map((l, i) => `<div class="opp-slot ${opp.lines > i ? 'active' : ''}">${l}</div>`).join('')}
           </div>
-        `;
-
-        container.appendChild(card);
-      });
-    }
-
-    function renderScoreboard(players) {
-      const tbody = document.getElementById('matchScoreTable');
-      tbody.innerHTML = '';
-
-      const sorted = Object.values(players).sort((a, b) => (b.score || 0) - (a.score || 0));
-
-      sorted.forEach(p => {
-        const tr = document.createElement('tr');
-        const isMe = p.id === myPlayerId;
-        tr.className = isMe ? "text-indigo-300 font-bold bg-indigo-950/20" : "text-slate-300";
-        tr.innerHTML = `
-          <td class="py-1.5 pl-1 flex items-center gap-1.5">
-            ${isMe ? '<i class="ph ph-user text-indigo-400"></i>' : ''}
-            <span>${escapeHtml(p.name)}</span>
-          </td>
-          <td class="py-1.5 text-center font-mono font-bold">${p.score || 0}</td>
-          <td class="py-1.5 pr-1 text-right font-mono text-slate-400">${p.pending ?? 49}</td>
-        `;
-        tbody.appendChild(tr);
-      });
-    }
-
-    let lastKnownCallCount = 0;
-    function renderCallsHistory(callsMap) {
-      const container = document.getElementById('calledNumbersList');
-      const calls = Object.values(callsMap).sort((a, b) => b.timestamp - a.timestamp);
-
-      document.getElementById('calledCountText').innerText = `${calls.length} called`;
-
-      if (calls.length > 0) {
-        document.getElementById('lastCalledBadge').innerText = `Last: #${calls[0].number} (${calls[0].calledBy})`;
-      }
-
-      container.innerHTML = '';
-      calls.slice(0, 20).forEach((c, idx) => {
-        const badge = document.createElement('span');
-        badge.className = `px-2 py-0.5 rounded text-xs font-mono font-bold cursor-pointer transition ${
-          idx === 0 ? 'bg-amber-500 text-slate-950 scale-105' : 'bg-slate-800 text-slate-300 hover:bg-indigo-600 hover:text-white'
-        }`;
-        badge.innerText = c.number;
-        badge.title = `Called by ${c.calledBy}`;
-        badge.onclick = () => findAndHighlightNumber(c.number);
-        container.appendChild(badge);
-      });
-
-      // Sound chime on newly broadcasted call from another user
-      if (calls.length > lastKnownCallCount) {
-        if (calls[0].calledBy !== myPlayerName) {
-          playBeep(440, 'triangle', 0.2);
-          showBanner(`${calls[0].calledBy} called number ${calls[0].number}!`);
-        }
-        lastKnownCallCount = calls.length;
-      }
-    }
-
-    let lastActivityTimestamp = 0;
-    function renderActivities(activityMap) {
-      const container = document.getElementById('activityLog');
-      const acts = Object.values(activityMap).sort((a, b) => b.time - a.time);
-
-      container.innerHTML = '';
-      acts.slice(0, 15).forEach(act => {
-        const row = document.createElement('div');
-        row.className = "text-[11px] text-slate-400";
-        row.innerText = act.text;
-        container.appendChild(row);
-      });
-
-      if (acts.length > 0 && acts[0].time > lastActivityTimestamp) {
-        lastActivityTimestamp = acts[0].time;
-        if (acts[0].author !== myPlayerName) {
-          showBanner(acts[0].text);
-          playBeep(300, 'sawtooth', 0.2);
-        }
-      }
-    }
-
-    function triggerRainbowWin(winnerName) {
-      // Confetti effect
-      if (window.confetti) {
-        confetti({
-          particleCount: 100,
-          spread: 70,
-          origin: { y: 0.6 }
-        });
-      }
-
-      const modal = document.getElementById('winnerModal');
-      document.getElementById('modalTitle').innerText = `${winnerName} GOT RAINBOW!`;
-      document.getElementById('modalSubtitle').innerText = currentRound >= 4 
-        ? "Match Completed! Check the final scoreboard."
-        : `Round ${currentRound} Complete! Proceed to the next round.`;
-
-      document.getElementById('modalScores').innerHTML = `
-        <div class="font-bold text-white mb-1">Round Status:</div>
-        <div>🏆 Winner: <b class="text-amber-400">${winnerName}</b></div>
-        <div>🏁 Current Round: <b>${currentRound} of 4</b></div>
+        </div>
       `;
-
-      modal.classList.remove('hidden');
     }
 
-    function showBanner(msg) {
-      const banner = document.getElementById('alertBanner');
-      const text = document.getElementById('alertBannerText');
-      text.innerText = msg;
-      banner.classList.remove('hidden');
-      setTimeout(() => {
-        banner.classList.add('hidden');
-      }, 4000);
+    list.innerHTML = html || "Waiting for other players to join...";
+  }
+
+  function shuffleGrid() {
+    let nums = Array.from({length: 49}, (_, i) => i + 1);
+    for (let i = nums.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [nums[i], nums[j]] = [nums[j], nums[i]];
     }
 
-    function leaveRoom() {
-      if (confirm("Are you sure you want to exit this game room?")) {
-        window.location.href = window.location.pathname;
+    let idx = 0;
+    for (let r = 0; r < 7; r++) {
+      for (let c = 0; c < 7; c++) {
+        const td = document.getElementById(`cell_${r}_${c}`);
+        td.innerText = nums[idx++];
+        td.classList.remove("cut", "highlight");
+      }
+    }
+    evaluateBoard();
+    if (client && client.connected) {
+      broadcast({ type: "shuffle", id: myId, name: myName });
+    }
+  }
+
+  function clearCuts() {
+    document.querySelectorAll(".grid-table td").forEach(td => td.classList.remove("cut"));
+    evaluateBoard();
+    syncMyProgress();
+  }
+
+  function getMyCompletedLines() {
+    let matrix = [];
+    for (let r = 0; r < 7; r++) {
+      matrix[r] = [];
+      for (let c = 0; c < 7; c++) {
+        matrix[r][c] = document.getElementById(`cell_${r}_${c}`).classList.contains("cut");
       }
     }
 
-    function escapeHtml(str) {
-      if (!str) return '';
-      return String(str)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
+    let lines = 0;
+    for (let r = 0; r < 7; r++) if (matrix[r].every(v => v)) lines++;
+    for (let c = 0; c < 7; c++) {
+      let full = true;
+      for (let r = 0; r < 7; r++) if (!matrix[r][c]) { full = false; break; }
+      if (full) lines++;
     }
-  </script>
+    let d1 = true, d2 = true;
+    for (let i = 0; i < 7; i++) {
+      if (!matrix[i][i]) d1 = false;
+      if (!matrix[i][6 - i]) d2 = false;
+    }
+    if (d1) lines++;
+    if (d2) lines++;
+    return lines;
+  }
+
+  function evaluateBoard() {
+    const lines = getMyCompletedLines();
+    document.getElementById("myScoreDisplay").innerText = `Completed: ${lines} / 7`;
+    for (let i = 0; i < 7; i++) {
+      const el = document.getElementById(`r${i}`);
+      if (lines > i) el.classList.add("active");
+      else el.classList.remove("active");
+    }
+  }
+
+  function syncMyProgress() {
+    if (client && client.connected) {
+      broadcast({ type: "update", id: myId, name: myName, lines: getMyCompletedLines() });
+    }
+  }
+
+  function spotNumber() {
+    const val = parseInt(document.getElementById("spotInput").value);
+    document.querySelectorAll(".grid-table td").forEach(td => {
+      td.classList.remove("highlight");
+      if (parseInt(td.innerText) === val) {
+        td.classList.add("highlight");
+        setTimeout(() => td.classList.remove("highlight"), 3000);
+      }
+    });
+  }
+
+  function broadcastCall() {
+    const val = document.getElementById("callInput").value;
+    if (!val) return;
+    document.getElementById("lastCalled").innerText = val;
+    broadcast({ type: "call", id: myId, name: myName, num: val });
+    document.getElementById("callInput").value = "";
+  }
+
+  function nextRound() {
+    currentRound = (currentRound % 4) + 1;
+    document.getElementById("roundDisplay").innerText = `Round ${currentRound} / 4`;
+    shuffleGrid();
+    logActivity(`Round ${currentRound} started!`);
+  }
+
+  function logActivity(msg) {
+    const box = document.getElementById("logBox");
+    const div = document.createElement("div");
+    div.className = "log-item";
+    div.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    box.prepend(div);
+  }
+</script>
 </body>
 </html>
